@@ -1,0 +1,223 @@
+#INSTALANDO BIBLIOTECAS DO SISTEMA
+import tkinter as tk
+import random
+import speech_recognition as sr
+from tkinter import messagebox
+import google.generativeai as genai
+import re
+import pyttsx3  # Para a resposta de voz
+import webbrowser
+import urllib.parse
+import ctypes
+import serial
+import time
+#CONFIGURAÇÃO DE VOZ
+engine = pyttsx3.init()
+vozes = engine.getProperty('voices')
+engine.setProperty('voice', vozes[0].id)#Indice de vozes
+engine.setProperty('rate', 230)  # Velocidade de fala
+# Função para configurar o modelo do Gemini
+def configurar_modelo():
+    api_key = "AIzaSyBg6cEaT7tFNYUzYq7iO92mwOOolFljy8k"
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel("models/gemini-1.5-pro-001")
+#INTERFACE (UI)
+def criar_interface():
+    global text_output  
+    # Janela principal
+    window = tk.Tk()
+    window.title("JARVIS - Assistente Pessoal")
+    window.geometry("900x700")
+    window.configure(bg="black")  # Fundo preto
+    # Título
+    label_titulo = tk.Label(window, text="J.A.R.V.I.S", font=("Arial", 18, "bold"), fg="#00BFFF", bg="black")
+    label_titulo.pack(pady=10)
+    # Área de resposta
+    text_output = tk.Text(window, height=10, width=70, font=("Arial", 12), wrap=tk.WORD, state=tk.DISABLED, 
+                          bg="black", fg="#00BFFF", insertbackground="#00BFFF")
+    text_output.pack(pady=10)
+    # Rodapé
+    label_rodape = tk.Label(window, text="Desenvolvido por Marlon", font=("Arial", 10), fg="gray", bg="black")
+    label_rodape.pack(side=tk.BOTTOM, pady=10)
+
+
+    # Escutar perguntas automaticamente (caso tenha essa função)
+    window.after(1000, escutar_pergunta)  
+    window.mainloop()
+#CAPTURA E LÊ SAÍDA TEXTO DO JARVIS
+def falar(texto):
+    """Faz o JARVIS falar usando pyttsx3."""
+    engine = pyttsx3.init()
+    engine.say(texto)
+    engine.runAndWait()
+#OBTEM O COMANDO APARTIR DO MICROFONE
+
+# Função para escutar a pergunta de voz (de forma contínua)
+def escutar_pergunta():
+    reconhecedor = sr.Recognizer()
+    microfone = sr.Microphone()
+
+    print("Agora você pode fazer perguntas... Fale sua pergunta!")
+
+    while True:
+        try:
+            with microfone as source:
+                reconhecedor.adjust_for_ambient_noise(source)
+                audio = reconhecedor.listen(source)
+                pergunta = reconhecedor.recognize_google(audio, language="pt-BR").lower()
+
+            print(f"Pergunta detectada: {pergunta}")
+            perguntar(pergunta)  # Passa a pergunta para ser respondida
+
+        except sr.UnknownValueError:
+            pass  # Ignora se não entender a pergunta
+        except sr.RequestError:
+            print("Erro ao conectar ao serviço de reconhecimento de fala.")
+#ENVIA E OBTÉM RESPOSTAS FEITAS AO JARVIS 
+def perguntar(pergunta):
+    if pergunta.strip() == "":
+        messagebox.showwarning("Aviso", "Por favor, faça uma pergunta!")
+        return
+
+    # Gera a resposta com o modelo Gemini
+    model = configurar_modelo()
+    response = model.generate_content(pergunta)
+    
+    resposta = response.text.strip()  # Pega a resposta do modelo
+    if resposta:
+        # Exibe a resposta no GUI
+        resposta_limpa = remover_emojis_e_simbolos(resposta)
+        text_output.config(state=tk.NORMAL)
+        text_output.delete(1.0, tk.END)  # Limpa a área de resposta
+        text_output.insert(tk.END, "JARVIS: " + resposta_limpa)
+        text_output.config(state=tk.DISABLED)
+        
+        # Responde por voz com pyttsx3
+        engine = pyttsx3.init()
+        engine.say(resposta_limpa)
+        engine.runAndWait()
+
+    else:
+        messagebox.showerror("Erro", "Não consegui gerar uma resposta. Tente novamente.")
+#LIMPA A RESPOSTA DE EMOJIS E *
+def remover_emojis_e_simbolos(texto):
+    return re.sub(r'[^\w\s,\.!?]', '', texto)
+
+#COMANDOS
+def limpar_lixeira():
+    """Esvazia a lixeira do Windows."""
+    mensagem = "Ok, esvaziando a lixeira."
+    print(mensagem)
+    falar(mensagem)  # Fala a mensagem antes de esvaziar
+
+    # Comando para esvaziar a lixeira no Windows
+    try:
+        SHEmptyRecycleBin = ctypes.windll.shell32.SHEmptyRecycleBinW
+        SHEmptyRecycleBin(None, None, 1)  # O número 1 impede a caixa de confirmação
+        print("Lixeira esvaziada com sucesso.")
+        falar("Lixeira esvaziada com sucesso.")
+    except Exception as e:
+        print(f"Erro ao esvaziar a lixeira: {e}")
+        falar("Não foi possível esvaziar a lixeira.")
+def tocar_musica(musica):
+    """Pesquisa a música no Google com filtro para YouTube."""
+    if not musica:
+        falar("Por favor, informe o nome da música.")
+        return
+    
+    query = urllib.parse.quote(musica + " site:youtube.com")
+    url = f"https://www.google.com/search?q={query}"
+    
+    # JARVIS confirma que está pesquisando antes de abrir o navegador
+    mensagem = f"Ok, pesquisando {musica} no YouTube."
+    print(mensagem)
+    falar(mensagem)
+
+    # Abre o navegador com a pesquisa
+    webbrowser.open(url)
+def pesquisar_no_google(termo):
+    """Abre o navegador e pesquisa o termo no Google."""
+    if not termo.strip():
+        print("Nenhuma pesquisa informada.")
+        falar("Nenhuma pesquisa informada.")
+        return
+    
+    mensagem = f"Pesquisando por {termo} no Google."
+    print(mensagem)
+    falar(mensagem)
+    
+    # Codifica o termo para URL e abre o navegador
+    url = f"https://www.google.com/search?q={urllib.parse.quote(termo)}"
+    webbrowser.open(url)
+def controlar_servo(motor, angulo):
+    """Envia um comando para mover um dos 5 servos do Arduino."""
+    if 1 <= motor <= 5 and 0 <= angulo <= 180:
+        comando = f"{motor}:{angulo}\n"
+        arduino.write(comando.encode())  # Envia o comando via Serial
+        print(f"Enviando comando: {comando.strip()}")
+        falar(f"Movendo servo {motor} para {angulo} graus.")
+    else:
+        print("Número do motor ou ângulo inválido!")
+# Configurar a comunicação serial (ajuste a porta conforme necessário)
+try:
+    arduino = serial.Serial("COM3", 9600, timeout=1)  # Mude "COM3" conforme sua porta
+    time.sleep(2)  # Aguarda a conexão
+    print("Conectado ao Arduino!")
+except:
+    print("Erro ao conectar ao Arduino!")
+
+#PAINEL DE COMANDOS
+def processar_comando(comando):
+    """Verifica se o comando inclui 'tocar música' e extrai o nome."""
+    comando = comando.lower()
+
+    if "tocar música" in comando:
+        musica = comando.replace("tocar música", "").strip()  # Remove "tocar música" e pega o resto
+        if musica:
+            tocar_musica(musica)
+        else:
+            falar("Por favor, informe o nome da música.")
+    elif "acorda criança" in comando:
+        print("JARVIS ativado! Abrindo interface...")
+        criar_interface()  # Supondo que já existe essa função
+    elif "esvaziar lixeira" in comando:
+        print("JARVIS limpando lixeira!")
+        limpar_lixeira()
+    elif "pesquise para mim" in comando:
+        termo_pesquisa = comando.replace("pesquise para mim", "").strip()
+        pesquisar_no_google(termo_pesquisa)
+    elif "mover servo" in comando:
+        try:
+            partes = comando.split()
+            motor = int(partes[2])  # Número do servo
+            angulo = int(partes[4])  # Ângulo do servo
+            controlar_servo(motor, angulo)
+        except:
+            print("Comando inválido. Exemplo correto: 'mover servo 1 para 90 graus'.")
+        
+    else:
+        falar("Comando não reconhecido.")
+def escutar_comando_ativacao():
+    """Escuta comandos via microfone e processa quando detectado."""
+    reconhecedor = sr.Recognizer()
+    microfone = sr.Microphone()
+
+    while True:
+        try:
+            print("Aguardando comando de ativação...")
+            with microfone as source:
+                reconhecedor.adjust_for_ambient_noise(source)
+                audio = reconhecedor.listen(source)
+                comando = reconhecedor.recognize_google(audio, language="pt-BR").lower()
+
+                print(f"Comando detectado: {comando}")
+
+                # Processa qualquer comando detectado
+                processar_comando(comando)
+
+        except sr.UnknownValueError:
+            pass  # Ignora erros quando não entende o áudio
+        except sr.RequestError:
+            print("Erro ao conectar ao serviço de reconhecimento de fala.")
+# Inicia a escuta do comando de ativação
+escutar_comando_ativacao()
